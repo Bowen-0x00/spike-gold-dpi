@@ -545,3 +545,160 @@ void sim_t::dpi_set_pc(reg_t addr) const
   for (size_t i=0; i< procs.size(); i++)
     procs[i]->get_state()->pc = addr;
 }
+
+// --- Add these to sim.cc (sim_t member implementations) ---
+
+int sim_t::dpi_get_all_fprs(unsigned hartid, uint64_t out[32]) const
+{
+  if (!out) return 0;
+  auto it = harts.find(hartid);
+  if (it == harts.end()) return 0;
+  processor_t* p = it->second;
+  if (!p) return 0;
+  state_t* st = p->get_state();
+  if (!st) return 0;
+
+  // Copy raw representation of each FPR into out[i] (zero-extended)
+  for (int i = 0; i < 32; ++i) {
+    // sizeof element
+    size_t elem_bytes = sizeof(st->FPR[i]);
+    uint64_t val = 0;
+    size_t copy_bytes = elem_bytes > sizeof(uint64_t) ? sizeof(uint64_t) : elem_bytes;
+    std::memcpy(&val, &st->FPR[i], copy_bytes);
+    out[i] = val;
+  }
+  return 32;
+}
+
+int sim_t::dpi_get_all_vregs(unsigned hartid, uint64_t *out, int max_qwords) const
+{
+  if (!out || max_qwords <= 0) return 0;
+  auto it = harts.find(hartid);
+  if (it == harts.end()) return 0;
+  processor_t* p = it->second;
+  if (!p) return 0;
+
+  vectorUnit_t &VU = p->VU;
+  if (!VU.reg_file) return 0;
+  reg_t VLEN = VU.get_vlen(); // bits
+  if (VLEN == 0) return 0;
+
+  size_t bytes_per_reg = (size_t)(VLEN >> 3);
+  const int nregs = 32; // architectural number of vector registers
+  size_t total_bytes = bytes_per_reg * (size_t)nregs;
+  size_t total_qwords = (total_bytes + 7) / 8;
+
+  int to_write = (int) std::min<size_t>((size_t)max_qwords, total_qwords);
+  const uint8_t *base = reinterpret_cast<const uint8_t*>(VU.reg_file);
+
+  for (int q = 0; q < to_write; ++q) {
+    size_t byte_idx = (size_t)q * 8;
+    uint64_t val = 0;
+    if (byte_idx < total_bytes) {
+      size_t copy_bytes = std::min<size_t>(8, total_bytes - byte_idx);
+      std::memcpy(&val, base + byte_idx, copy_bytes);
+    }
+    out[q] = val;
+  }
+  return to_write;
+}
+
+int sim_t::dpi_get_vlen(unsigned hartid) const
+{
+  auto it = harts.find(hartid);
+  if (it == harts.end()) return 0;
+  processor_t* p = it->second;
+  if (!p) return 0;
+  return (int) p->VU.get_vlen();
+}
+
+uint64_t sim_t::dpi_get_vlenb(unsigned hartid) const
+{
+  auto it = harts.find(hartid);
+  if (it == harts.end()) return 0;
+  processor_t* p = it->second;
+  if (!p) return 0;
+  return (uint64_t) p->VU.vlenb;
+}
+
+uint64_t sim_t::dpi_get_vxsat(unsigned hartid) const
+{
+  auto it = harts.find(hartid);
+  if (it == harts.end()) return 0;
+  processor_t* p = it->second;
+  if (!p) return 0;
+  // try VU csr pointer first
+  if (p->VU.vxsat) return (uint64_t) p->VU.vxsat->read();
+  // fallback: search CSR map for the known address if needed (optional)
+  try {
+    state_t* st = p->get_state();
+    if (st) {
+      // vxsat CSR address is implementation-dependent; if present in csrmap, read it
+      // For compatibility, iterate map and return any csr with matching name? (not implemented)
+    }
+  } catch (...) {}
+  return 0;
+}
+
+uint64_t sim_t::dpi_get_vxrm(unsigned hartid) const
+{
+  auto it = harts.find(hartid);
+  if (it == harts.end()) return 0;
+  processor_t* p = it->second;
+  if (!p) return 0;
+  if (p->VU.vxrm) return (uint64_t) p->VU.vxrm->read();
+  return 0;
+}
+
+uint64_t sim_t::dpi_get_vstart(unsigned hartid) const
+{
+  auto it = harts.find(hartid);
+  if (it == harts.end()) return 0;
+  processor_t* p = it->second;
+  if (!p) return 0;
+  if (p->VU.vstart) return (uint64_t) p->VU.vstart->read();
+  return 0;
+}
+
+uint64_t sim_t::dpi_get_vl(unsigned hartid) const
+{
+  auto it = harts.find(hartid);
+  if (it == harts.end()) return 0;
+  processor_t* p = it->second;
+  if (!p) return 0;
+  if (p->VU.vl) return (uint64_t) p->VU.vl->read();
+  // fallback to vlmax
+  return (uint64_t) p->VU.vlmax;
+}
+
+uint64_t sim_t::dpi_get_vtype(unsigned hartid) const
+{
+  auto it = harts.find(hartid);
+  if (it == harts.end()) return 0;
+  processor_t* p = it->second;
+  if (!p) return 0;
+  if (p->VU.vtype) return (uint64_t) p->VU.vtype->read();
+  // fallback: construct a basic vtype from vsew (encode in low bits)
+  uint64_t vt = 0;
+  vt |= (uint64_t)(p->VU.vsew & 0xFF);
+  return vt;
+}
+
+uint64_t sim_t::dpi_get_vcsr(unsigned hartid, uint32_t csr_addr) const
+{
+  auto it = harts.find(hartid);
+  if (it == harts.end()) return 0;
+  processor_t* p = it->second;
+  if (!p) return 0;
+  state_t* st = p->get_state();
+  if (!st) return 0;
+  auto cit = st->csrmap.find((reg_t)csr_addr);
+  if (cit == st->csrmap.end()) return 0;
+  csr_t_p c = cit->second;
+  if (!c) return 0;
+  try {
+    return (uint64_t) c->read();
+  } catch (...) {
+    return 0;
+  }
+}

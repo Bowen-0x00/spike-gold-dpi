@@ -195,6 +195,19 @@ public:
 
   void dpi_reset() const;
   void dpi_set_pc(reg_t addr) const;
+
+
+  int dpi_get_all_fprs(unsigned hartid, uint64_t out[32]) const;
+  int dpi_get_all_vregs(unsigned hartid, uint64_t *out, int max_qwords) const;
+  int dpi_get_vlen(unsigned hartid) const;
+  uint64_t dpi_get_vlenb(unsigned hartid) const;
+  uint64_t dpi_get_vxsat(unsigned hartid) const;
+  uint64_t dpi_get_vxrm(unsigned hartid) const;
+  uint64_t dpi_get_vstart(unsigned hartid) const;
+  uint64_t dpi_get_vl(unsigned hartid) const;
+  uint64_t dpi_get_vtype(unsigned hartid) const;
+  uint64_t dpi_get_vcsr(unsigned hartid, uint32_t csr_addr) const;
+
 };
 
 extern volatile bool ctrlc_pressed;
