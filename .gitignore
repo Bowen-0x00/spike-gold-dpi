@@ -8,3 +8,9 @@ autom4te.cache/
 .#*
 *~
 config.log
+.bash_history
+.vscode/
+dpi/*.a
+dpi/*.o
+dpi/*.txt
+dpi/*.so

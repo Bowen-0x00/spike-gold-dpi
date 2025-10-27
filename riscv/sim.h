@@ -162,6 +162,39 @@ public:
   // enumerate processors, which segfaults if procs hasn't been initialized
   // yet.
   debug_module_t debug_module;
+
+
+  //
+  // DPI / external helper API (minimal public wrappers).
+  // These provide safe, stable entrypoints for external code (DPI wrapper)
+  // to step the simulation and read architectural state without exposing
+  // internal private members.
+  //
+  // Get core pointer by hart id (nullptr if not found).
+  processor_t* get_core_by_id(unsigned hartid);
+
+  // Step the simulator by n "steps" (calls private step()).
+  // Return 0 on ok.
+  int dpi_step(size_t n);
+
+  // Return pointer to memory backing for physical address paddr (may be null).
+  // This internally calls the private addr_to_mem(reg_t) helper.
+  char* dpi_addr_to_mem(reg_t paddr);
+
+  // Read len bytes from physical address paddr into dst. Return true on success.
+  bool dpi_read_mem(reg_t paddr, size_t len, void* dst);
+
+  // Convenience: get PC for hart (0 if not found).
+  uint64_t dpi_get_pc(unsigned hartid) const;
+
+  // Convenience: bulk read GPRs for hart into out[32]. Returns number written or 0 on error.
+  int dpi_get_all_gprs(unsigned hartid, uint64_t out[32]) const;
+
+  // Convenience: read CSR via processor API. Returns value or 0 on error.
+  uint64_t dpi_get_csr(unsigned hartid, uint32_t csr_addr) const;
+
+  void dpi_reset() const;
+  void dpi_set_pc(reg_t addr) const;
 };
 
 extern volatile bool ctrlc_pressed;

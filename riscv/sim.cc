@@ -470,3 +470,78 @@ void sim_t::proc_reset(unsigned id)
 {
   debug_module.proc_reset(id);
 }
+
+// --- DPI / external helper API implementations ---
+
+processor_t* sim_t::get_core_by_id(unsigned hartid)
+{
+  auto it = harts.find(hartid);
+  if (it == harts.end()) return nullptr;
+  return it->second;
+}
+
+int sim_t::dpi_step(size_t n)
+{
+  // calls private step(size_t)
+  step(n);
+  return 0;
+}
+
+char* sim_t::dpi_addr_to_mem(reg_t paddr)
+{
+  return addr_to_mem(paddr);
+}
+
+bool sim_t::dpi_read_mem(reg_t paddr, size_t len, void* dst)
+{
+  char* src = addr_to_mem(paddr);
+  if (!src) return false;
+  memcpy(dst, src, len);
+  return true;
+}
+
+uint64_t sim_t::dpi_get_pc(unsigned hartid) const
+{
+  auto it = harts.find(hartid);
+  if (it == harts.end()) return 0;
+  processor_t* p = it->second;
+  if (!p) return 0;
+  return (uint64_t)p->get_state()->pc;
+}
+
+int sim_t::dpi_get_all_gprs(unsigned hartid, uint64_t out[32]) const
+{
+  auto it = harts.find(hartid);
+  if (it == harts.end()) return 0;
+  processor_t* p = it->second;
+  if (!p) return 0;
+  for (int i = 0; i < 32; ++i) {
+    out[i] = (uint64_t)p->get_state()->XPR[i];
+  }
+  return 32;
+}
+
+uint64_t sim_t::dpi_get_csr(unsigned hartid, uint32_t csr_addr) const
+{
+  auto it = harts.find(hartid);
+  if (it == harts.end()) return 0;
+  processor_t* p = it->second;
+  if (!p) return 0;
+  insn_t dummy(0);
+  try {
+    return (uint64_t)p->get_csr((int)csr_addr, dummy, false, true);
+  } catch (...) {
+    return 0;
+  }
+}
+
+void sim_t::dpi_reset() const
+{
+  const_cast<sim_t*>(this)->reset();
+}
+
+void sim_t::dpi_set_pc(reg_t addr) const
+{
+  for (size_t i=0; i< procs.size(); i++)
+    procs[i]->get_state()->pc = addr;
+}
